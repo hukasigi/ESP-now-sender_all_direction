@@ -10,10 +10,14 @@ int16_t x_mm  = 0;
 int16_t y_mm  = 0;
 int16_t theta = 0;
 
+uint8_t pwm1 = 0;
+uint8_t pwm2 = 0;
+uint8_t pwm3 = 0;
+
 int16_t theta_mrad        = 0; // 受信姿勢[mrad] ミリにして送受信することで、動く
 int     target_x_mm       = 0;
 int     target_y_mm       = 0;
-int16_t target_theta_mrad = 0; // 送信目標姿勢[mrad]
+int16_t target_theta_mrad = 0; // 送信目標姿勢[mdeg]
 bool    moving            = false;
 
 constexpr double  INTEGRAL_MAX          = 10.0; // int8_t -> double
@@ -66,8 +70,8 @@ void processCommand(const char* input) {
             return;
         }
 
-        target_x_mm       = (int16_t)lround((double)x_mm + USER_SIGN * dx_cmd);
-        target_y_mm       = (int16_t)lround((double)y_mm + USER_SIGN * dy_cmd);
+        target_x_mm       = (int16_t)lround(USER_SIGN * dx_cmd);
+        target_y_mm       = (int16_t)lround(USER_SIGN * dy_cmd);
         double theta_rad  = theta_mrad / 1000.0;
         double tgt_rad    = wrapPi(theta_rad + dtheta_deg * DEG2RAD);
         target_theta_mrad = (int16_t)lround(tgt_rad * 1000.0);
@@ -93,7 +97,7 @@ void OnDataSent(const uint8_t* mac_addr, esp_now_send_status_t status) {
     // snprintf、macアドレス6バイトを人間が読める形式に変換する
     snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3],
              mac_addr[4], mac_addr[5]);
-    Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+    // Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
 }
 
 // 受信コールバック
@@ -102,13 +106,16 @@ void OnDataRecv(const uint8_t* mac_addr, const uint8_t* data, int data_len) {
     snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3],
              mac_addr[4], mac_addr[5]);
 
-    if (data_len >= 6) {
+    if (data_len >= 9) {
         x_mm       = (int16_t)((data[0] << 8) | data[1]);
         y_mm       = (int16_t)((data[2] << 8) | data[3]);
         theta_mrad = (int16_t)((data[4] << 8) | data[5]);
+        pwm1       = data[6];
+        pwm2       = data[7];
+        pwm3       = data[8];
     }
 
-    Serial.println();
+    // Serial.println();
 }
 
 void setup() {
@@ -158,6 +165,13 @@ void loop() {
                        (uint8_t)((target_theta_mrad >> 8) & 0xFF), (uint8_t)(target_theta_mrad & 0xFF)};
 
     esp_err_t result = esp_now_send(slave.peer_addr, data, sizeof(data));
+
+    double target_theta_deg = (static_cast<double>(target_theta_mrad) / 1000.0) * RAD2DEG;
+
+    Serial.printf(
+        "x_mm:%d y_mm:%d theta:%.2fdeg target_x:%d target_y:%d target_theta:%.2fdeg (%d mrad) pwm1:%d pwm2:%d pwm3:%d\r\n",
+        x_mm, y_mm, (static_cast<double>(theta_mrad) / 1000.0) * RAD2DEG, static_cast<int>(target_x_mm * USER_SIGN),
+        static_cast<int>(target_y_mm * USER_SIGN), target_theta_deg, static_cast<int>(target_theta_mrad), pwm1, pwm2, pwm3);
 
     delay(50);
 }
