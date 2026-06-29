@@ -19,6 +19,7 @@ int     target_x_mm       = 0;
 int     target_y_mm       = 0;
 int16_t target_theta_mrad = 0; // 送信目標姿勢[mdeg]
 bool    moving            = false;
+bool    stop              = false;
 
 constexpr double  INTEGRAL_MAX          = 10.0; // int8_t -> double
 constexpr int16_t PWM_LIMIT             = 255;
@@ -33,7 +34,7 @@ constexpr double  DEG2RAD               = PI / 180.0;
 
 const double RAD2DEG = 360 / (2 * PI);
 
-constexpr double USER_SIGN = -1.0; // fを前進にしたい場合 -1.0（現状の逆転補正）
+constexpr double USER_SIGN = 1.0; // fを前進にしたい場合 -1.0（現状の逆転補正）
 
 void processCommand(const char* input);
 
@@ -73,7 +74,7 @@ void processCommand(const char* input) {
         target_x_mm       = (int16_t)lround(USER_SIGN * dx_cmd);
         target_y_mm       = (int16_t)lround(USER_SIGN * dy_cmd);
         double theta_rad  = theta_mrad / 1000.0;
-        double tgt_rad    = wrapPi(theta_rad + dtheta_deg * DEG2RAD);
+        double tgt_rad    = wrapPi(dtheta_deg * DEG2RAD);
         target_theta_mrad = (int16_t)lround(tgt_rad * 1000.0);
 
         moving = true;
@@ -106,13 +107,14 @@ void OnDataRecv(const uint8_t* mac_addr, const uint8_t* data, int data_len) {
     snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3],
              mac_addr[4], mac_addr[5]);
 
-    if (data_len >= 9) {
+    if (data_len >= 10) {
         x_mm       = (int16_t)((data[0] << 8) | data[1]);
         y_mm       = (int16_t)((data[2] << 8) | data[3]);
         theta_mrad = (int16_t)((data[4] << 8) | data[5]);
         pwm1       = data[6];
         pwm2       = data[7];
         pwm3       = data[8];
+        stop       = data[9];
     }
 
     // Serial.println();
@@ -168,10 +170,11 @@ void loop() {
 
     double target_theta_deg = (static_cast<double>(target_theta_mrad) / 1000.0) * RAD2DEG;
 
-    Serial.printf(
-        "x_mm:%d y_mm:%d theta:%.2fdeg target_x:%d target_y:%d target_theta:%.2fdeg (%d mrad) pwm1:%d pwm2:%d pwm3:%d\r\n",
-        x_mm, y_mm, (static_cast<double>(theta_mrad) / 1000.0) * RAD2DEG, static_cast<int>(target_x_mm * USER_SIGN),
-        static_cast<int>(target_y_mm * USER_SIGN), target_theta_deg, static_cast<int>(target_theta_mrad), pwm1, pwm2, pwm3);
+    Serial.printf("x_mm:%d y_mm:%d theta:%.2fdeg target_x:%d target_y:%d target_theta:%.2fdeg (%d mrad) pwm1:%d pwm2:%d "
+                  "pwm3:%d stop:%d\r\n",
+                  x_mm, y_mm, (static_cast<double>(theta_mrad) / 1000.0) * RAD2DEG, static_cast<int>(target_x_mm * USER_SIGN),
+                  static_cast<int>(target_y_mm * USER_SIGN), target_theta_deg, static_cast<int>(target_theta_mrad), pwm1, pwm2,
+                  pwm3, stop);
 
     delay(50);
 }
